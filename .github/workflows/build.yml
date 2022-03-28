@@ -20,11 +20,7 @@ jobs:
     strategy:
       matrix:
         python-version:
-          - "2.7"
-          - "3.7"
           - "3.8"
-          - "3.9"
-          - "3.10"
 
     steps:
       - name: Install OS dependencies
@@ -50,6 +46,7 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install -U pip
+          python setup.py install && pip install objgraph
           python -m pip install -U setuptools wheel
           python -m pip install -U coverage coverage-python-version coveralls
           python -m pip install -e .[test]
@@ -67,41 +64,32 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           COVERALLS_SERVICE_NAME: github
 
-  lint:
-    name: ${{ matrix.toxenv }}
-    runs-on: ubuntu-latest
-
-    strategy:
+  test_arm64: 
+     runs-on: ubuntu-latest
+     strategy:
       matrix:
-        toxenv:
-          - flake8
-          - isort
-          - check-manifest
-          - check-python-versions
-
-    steps:
-      - name: Git clone
-        uses: actions/checkout@v2
-
-      - name: Set up Python ${{ env.default_python || '3.9' }}
-        uses: actions/setup-python@v2
-        with:
-          python-version: "${{ env.default_python || '3.9' }}"
-
-      - name: Pip cache
-        uses: actions/cache@v2
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ matrix.toxenv }}-${{ hashFiles('tox.ini') }}
-          restore-keys: |
-            ${{ runner.os }}-pip-${{ matrix.toxenv }}-
-            ${{ runner.os }}-pip-
-
-      - name: Install dependencies
+        python-version: [3.8]
+      fail-fast: false
+     steps:
+      - uses: actions/checkout@v2
+      - name: Set up QEMU
+        id: qemu
+        uses: docker/setup-qemu-action@v1
+      - name: Install and Run tests
         run: |
-          python -m pip install -U pip
-          python -m pip install -U setuptools wheel
-          python -m pip install -U tox
+               docker run --rm -v ${{ github.workspace }}:/ws:rw --workdir=/ws \
+               arm64v8/ubuntu:20.04 \
+               bash -exc 'apt-get update && apt-get -y install python3.8 curl git && \
+                ln -fs /usr/share/zoneinfo/America/New_York /etc/localtime && export DEBIAN_FRONTEND=noninteractive && apt-get install -y tzdata && dpkg-reconfigure --frontend noninteractive tzdata && \
+                apt-get -y install software-properties-common && add-apt-repository ppa:deadsnakes/ppa && apt-get -y update && \
+                apt install -y python3-pip python3.8-venv && python3.8 -m venv venv38 && source venv38/bin/activate && \
+                apt-get update && apt-get install -y graphviz && \
+                uname -m && \
+                python3.8 -m pip install -U pip && \
+                python3.8 setup.py install && pip3 install objgraph && \
+                python3.8 -m pip install -U setuptools wheel && \
+                python3.8 -m pip install -U coverage coverage-python-version coveralls && \
+                python3.8 -m pip install -e .[test] && \
+                coverage run tests.py && \
+                deactivate'
 
-      - name: Run ${{ matrix.toxenv }}
-        run: python -m tox -e ${{ matrix.toxenv }}
