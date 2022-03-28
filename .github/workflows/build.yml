@@ -92,4 +92,3 @@ jobs:
                 python3.8 -m pip install -e .[test] && \
                 coverage run tests.py && \
                 deactivate'
-
